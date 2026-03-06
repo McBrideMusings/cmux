@@ -161,6 +161,39 @@ This makes it visible in the GitHub PR UI (Commits tab, check statuses) that the
 - **Python socket tests (tests_v2/):** these connect to a running cmux instance's socket. Never launch an untagged `cmux DEV.app` to run them. If you must test locally, use a tagged build's socket (`/tmp/cmux-debug-<tag>.sock`) with `CMUX_SOCKET=/tmp/cmux-debug-<tag>.sock`
 - **Never `open` an untagged `cmux DEV.app`** from DerivedData. It conflicts with the user's running debug instance.
 
+## Relay system (relayd + relay-client)
+
+Remote terminal streaming via WebSocket. Architecture:
+
+- **`relayd/`** — Rust server. PTY sessions with persistent scrollback (64KB ring buffer), broadcast-based output, Claude Code process detection, project metadata API. Protocol defined in `docs/protocol.md`.
+- **`RelayClient/`** — Swift/macOS client. `ServerBrowserView` (NavigationSplitView), session attach/detach with scrollback replay, project info display.
+
+Key files:
+- `relayd/src/session.rs` — `SessionRegistry`, `ScrollbackBuffer`, attach/detach API
+- `relayd/src/claude_detect.rs` — Scans for Claude processes via `ps`/`lsof`
+- `relayd/src/project.rs` — Project name, git branch, `ProjectInfo` builder
+- `RelayClient/ServerBrowserView.swift` — Main UI with sidebar session list
+- `RelayClient/SessionDetailView.swift` — Terminal + detach overlay
+
+Build and run both together:
+
+```bash
+./admin relay              # builds + launches both, interleaved logs
+./admin relay --port 9000  # custom port
+```
+
+Build/test relayd alone:
+
+```bash
+./admin build-relayd
+./admin test-relayd
+./admin clippy
+```
+
+## Admin task runner
+
+Project-level `./admin` script (Python 3, stdlib only). Run with no args for interactive TUI menu, or `./admin <command>` for direct dispatch. All output tee'd to `tmp/run.log`.
+
 ## Ghostty submodule workflow
 
 Ghostty changes must be committed in the `ghostty` submodule and pushed to the `manaflow-ai/ghostty` fork.

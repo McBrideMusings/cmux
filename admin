@@ -212,6 +212,140 @@ def cmd_clean(args):
     ok("Clean complete")
 
 
+@command("relay", "Build and run relayd + relay-client together (--port PORT)")
+def cmd_relay(args):
+    import threading
+
+    port = "7800"
+    i = 0
+    while i < len(args):
+        if args[i] == "--port":
+            i += 1
+            if i >= len(args):
+                err("--port requires a value")
+                sys.exit(1)
+            port = args[i]
+        else:
+            err(f"Unknown arg: {args[i]}")
+            sys.exit(1)
+        i += 1
+
+    # Build relayd
+    info("Building relayd...")
+    rc = run_cmd("cd relayd && cargo build")
+    if rc != 0:
+        err("relayd build failed")
+        sys.exit(rc)
+
+    # Build relay-client
+    info("Building relay-client...")
+    rc = run_cmd(
+        "xcodebuild -project GhosttyTabs.xcodeproj -scheme relay-client "
+        "-configuration Debug -destination 'platform=macOS' build 2>&1 "
+        "| tail -5"
+    )
+    if rc != 0:
+        err("relay-client build failed")
+        sys.exit(rc)
+
+    # Find the built app
+    import json as _json
+    settings_proc = subprocess.run(
+        "xcodebuild -project GhosttyTabs.xcodeproj -scheme relay-client "
+        "-configuration Debug -showBuildSettings -json 2>/dev/null",
+        shell=True, capture_output=True, text=True,
+    )
+    app_path = None
+    if settings_proc.returncode == 0:
+        try:
+            settings = _json.loads(settings_proc.stdout)
+            for entry in settings:
+                bs = entry.get("buildSettings", {})
+                built_dir = bs.get("BUILT_PRODUCTS_DIR", "")
+                product = bs.get("FULL_PRODUCT_NAME", "")
+                if product == "relay-client.app" and built_dir:
+                    app_path = os.path.join(built_dir, product)
+                    break
+        except (ValueError, KeyError):
+            pass
+
+    if not app_path or not os.path.isdir(app_path):
+        err("Could not find relay-client.app — try building manually first")
+        sys.exit(1)
+
+    os.makedirs(LOG_DIR, exist_ok=True)
+    log_fh = open(LOG_FILE, "a")
+
+    SERVER_TAG = f"{C.BLUE}{C.BOLD}[server]{C.RESET} "
+    CLIENT_TAG = f"{C.MAGENTA}{C.BOLD}[client]{C.RESET} "
+
+    def prefixed_stream(proc, tag):
+        """Read lines from proc.stdout and print/log with a prefix tag."""
+        try:
+            for line in proc.stdout:
+                tagged = f"{tag}{line}"
+                sys.stdout.write(tagged)
+                sys.stdout.flush()
+                log_fh.write(tagged)
+                log_fh.flush()
+        except (IOError, ValueError):
+            pass
+
+    # Start relayd server
+    info(f"Starting relayd on port {port}...")
+    server_proc = subprocess.Popen(
+        f"./relayd/target/debug/relayd --port {port}",
+        shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        bufsize=1, universal_newlines=True,
+    )
+    _children.append(server_proc)
+    threading.Thread(target=prefixed_stream, args=(server_proc, SERVER_TAG), daemon=True).start()
+
+    # Start relay-client app and stream its os_log output
+    info("Launching relay-client...")
+    subprocess.Popen(["open", app_path])
+
+    client_proc = subprocess.Popen(
+        ["log", "stream", "--predicate",
+         'subsystem == "com.cmuxterm.relay-client" OR '
+         '(process == "relay-client" AND category != "default")',
+         "--style", "compact", "--level", "debug"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        bufsize=1, universal_newlines=True,
+    )
+    _children.append(client_proc)
+    threading.Thread(target=prefixed_stream, args=(client_proc, CLIENT_TAG), daemon=True).start()
+
+    ok("Both running. Ctrl+C to stop.")
+    print()
+
+    try:
+        server_proc.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for p in [server_proc, client_proc]:
+            try:
+                p.terminate()
+                p.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    p.kill()
+                except OSError:
+                    pass
+            if p in _children:
+                _children.remove(p)
+        # Also quit the app
+        subprocess.run(
+            ["osascript", "-e",
+             'tell application "relay-client" to quit'],
+            capture_output=True,
+        )
+        log_fh.close()
+        print()
+        info("Relay stopped.")
+
+
 # --- Inline TUI Menu ---
 
 def _tui_menu():
