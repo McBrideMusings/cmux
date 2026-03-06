@@ -93,7 +93,12 @@
 					A5008381 /* BrowserFindJavaScriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5008380 /* BrowserFindJavaScriptTests.swift */; };
 		DA7A10CA710E000000000003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DA7A10CA710E000000000001 /* Localizable.xcstrings */; };
 		DA7A10CA710E000000000004 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DA7A10CA710E000000000002 /* InfoPlist.xcstrings */; };
-			/* End PBXBuildFile section */
+					RC000001A1B2C3D4E5F60001 /* RelayClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000011A1B2C3D4E5F60001 /* RelayClientApp.swift */; };
+		RC000002A1B2C3D4E5F60001 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000012A1B2C3D4E5F60001 /* ConnectView.swift */; };
+		RC000003A1B2C3D4E5F60001 /* RelayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000013A1B2C3D4E5F60001 /* RelayConnection.swift */; };
+		RC000004A1B2C3D4E5F60001 /* TerminalSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000014A1B2C3D4E5F60001 /* TerminalSessionView.swift */; };
+		RC000005A1B2C3D4E5F60001 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = RC000070A1B2C3D4E5F60001 /* SwiftTerm */; };
+/* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		A5001020 /* Embed Frameworks */ = {
@@ -233,6 +238,11 @@
 				A5008380 /* BrowserFindJavaScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserFindJavaScriptTests.swift; sourceTree = "<group>"; };
 					DA7A10CA710E000000000001 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		DA7A10CA710E000000000002 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		RC000011A1B2C3D4E5F60001 /* RelayClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientApp.swift; sourceTree = "<group>"; };
+		RC000012A1B2C3D4E5F60001 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
+		RC000013A1B2C3D4E5F60001 /* RelayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConnection.swift; sourceTree = "<group>"; };
+		RC000014A1B2C3D4E5F60001 /* TerminalSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionView.swift; sourceTree = "<group>"; };
+		RC000000A1B2C3D4E5F60001 /* relay-client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "relay-client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -267,6 +277,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9000024A1B2C3D4E5F60719 /* Sentry in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		RC000052A1B2C3D4E5F60001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				RC000005A1B2C3D4E5F60001 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -327,6 +345,7 @@
 			children = (
 				A5001041 /* Sources */,
 				B9000003A1B2C3D4E5F60719 /* CLI */,
+				RC000020A1B2C3D4E5F60001 /* RelayClient */,
 				087C454FFF74443AB06942C3 /* Resources */,
 				A5001101 /* Assets.xcassets */,
 				IC000002 /* AppIcon.icon */,
@@ -424,6 +443,7 @@
 				B9000004A1B2C3D4E5F60719 /* cmux */,
 				7E7E6EF344A568AC7FEE3715 /* cmuxUITests.xctest */,
 				F1000002A1B2C3D4E5F60718 /* cmuxTests.xctest */,
+				RC000000A1B2C3D4E5F60001 /* relay-client.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -462,6 +482,17 @@
 				path = cmuxTests;
 				sourceTree = "<group>";
 			};
+		RC000020A1B2C3D4E5F60001 /* RelayClient */ = {
+			isa = PBXGroup;
+			children = (
+				RC000011A1B2C3D4E5F60001 /* RelayClientApp.swift */,
+				RC000012A1B2C3D4E5F60001 /* ConnectView.swift */,
+				RC000013A1B2C3D4E5F60001 /* RelayConnection.swift */,
+				RC000014A1B2C3D4E5F60001 /* TerminalSessionView.swift */,
+			);
+			path = RelayClient;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -548,6 +579,25 @@
 			productReference = F1000002A1B2C3D4E5F60718 /* cmuxTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		RC000050A1B2C3D4E5F60001 /* relay-client */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = RC000060A1B2C3D4E5F60001 /* Build configuration list for PBXNativeTarget "relay-client" */;
+			buildPhases = (
+				RC000051A1B2C3D4E5F60001 /* Sources */,
+				RC000052A1B2C3D4E5F60001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			packageProductDependencies = (
+				RC000070A1B2C3D4E5F60001 /* SwiftTerm */,
+			);
+			name = "relay-client";
+			productName = "relay-client";
+			productReference = RC000000A1B2C3D4E5F60001 /* relay-client.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -590,6 +640,7 @@
 					A5001272 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 					A5001292 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 					A5001260 /* XCLocalSwiftPackageReference "bonsplit" */,
+					RC000080A1B2C3D4E5F60001 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				);
 			productRefGroup = A5001042 /* Products */;
 			projectDirPath = "";
@@ -599,6 +650,7 @@
 				B9000005A1B2C3D4E5F60719 /* cmux-cli */,
 				CB450DF0F0B3839599082C4D /* cmuxUITests */,
 				F1000004A1B2C3D4E5F60718 /* cmuxTests */,
+				RC000050A1B2C3D4E5F60001 /* relay-client */,
 			);
 		};
 /* End PBXProject section */
@@ -701,6 +753,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9000002A1B2C3D4E5F60719 /* cmux.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		RC000051A1B2C3D4E5F60001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				RC000001A1B2C3D4E5F60001 /* RelayClientApp.swift in Sources */,
+				RC000002A1B2C3D4E5F60001 /* ConnectView.swift in Sources */,
+				RC000003A1B2C3D4E5F60001 /* RelayConnection.swift in Sources */,
+				RC000004A1B2C3D4E5F60001 /* TerminalSessionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -973,6 +1036,39 @@
 			};
 			name = Release;
 		};
+		RC000061A1B2C3D4E5F60001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.relay-client;
+				PRODUCT_NAME = "relay-client";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		RC000062A1B2C3D4E5F60001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.relay-client;
+				PRODUCT_NAME = "relay-client";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1012,6 +1108,14 @@
 				isa = XCLocalSwiftPackageReference;
 				relativePath = vendor/bonsplit;
 			};
+		RC000080A1B2C3D4E5F60001 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1040,6 +1144,11 @@
 				package = A5001292 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 				productName = MarkdownUI;
 			};
+		RC000070A1B2C3D4E5F60001 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = RC000080A1B2C3D4E5F60001 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
@@ -1088,6 +1197,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+	RC000060A1B2C3D4E5F60001 /* Build configuration list for PBXNativeTarget "relay-client" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			RC000061A1B2C3D4E5F60001 /* Debug */,
+			RC000062A1B2C3D4E5F60001 /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Release;
+	};
 /* End XCConfigurationList section */
 	};
 	rootObject = A5001070 /* Project object */;

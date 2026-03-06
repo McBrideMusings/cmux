@@ -1,0 +1,29 @@
+name: relayd CI
+
+on:
+  push:
+    paths:
+      - "relayd/**"
+      - ".github/workflows/relayd-ci.yml"
+  pull_request:
+    paths:
+      - "relayd/**"
+      - ".github/workflows/relayd-ci.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relayd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: relayd
+      - run: cargo build
+      - run: cargo clippy -- -D warnings
+      - run: cargo test
