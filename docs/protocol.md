@@ -17,14 +17,15 @@ Request the list of active sessions.
 Spawn a new PTY session.
 
 ```json
-{"type": "create_session", "shell": "/bin/zsh"}
+{"type": "create_session", "shell": "/bin/zsh", "cwd": "/path/to/dir"}
 ```
 
 `shell` is optional; defaults to `$SHELL` or `/bin/sh`.
+`cwd` is optional; defaults to the server's current directory.
 
 ### attach
 
-Attach to a session and start streaming its output.
+Attach to a session and start streaming its output. On attach, the server sends any buffered scrollback as an initial `data` message before the live stream begins.
 
 ```json
 {"type": "attach", "session_id": "uuid"}
@@ -32,7 +33,7 @@ Attach to a session and start streaming its output.
 
 ### detach
 
-Detach from the current session without killing it.
+Detach from the current session without killing it. The session continues running and buffering output.
 
 ```json
 {"type": "detach"}
@@ -62,6 +63,14 @@ Send input to the attached session's PTY. Payload is base64-encoded.
 {"type": "data", "payload": "base64..."}
 ```
 
+### get_project_info
+
+Request project metadata for a session.
+
+```json
+{"type": "get_project_info", "session_id": "uuid"}
+```
+
 ## Server to Client
 
 ### sessions
@@ -69,20 +78,26 @@ Send input to the attached session's PTY. Payload is base64-encoded.
 Response to `list_sessions`.
 
 ```json
-{"type": "sessions", "sessions": [{"id": "uuid", "shell": "/bin/zsh"}]}
+{"type": "sessions", "sessions": [{"id": "uuid", "shell": "/bin/zsh", "state": "attached", "cwd": "/path"}]}
 ```
+
+Each session includes:
+- `id` — session UUID
+- `shell` — shell command
+- `state` — `"attached"` or `"detached"`
+- `cwd` — working directory
 
 ### session_created
 
 Response to `create_session`.
 
 ```json
-{"type": "session_created", "session": {"id": "uuid", "shell": "/bin/zsh"}}
+{"type": "session_created", "session": {"id": "uuid", "shell": "/bin/zsh", "state": "detached", "cwd": "/path"}}
 ```
 
 ### attached
 
-Confirms attachment to a session.
+Confirms attachment to a session. Followed by a scrollback `data` message (if any buffered output exists) and then a `project_info` message.
 
 ```json
 {"type": "attached", "session_id": "uuid"}
@@ -110,6 +125,24 @@ A session was terminated.
 
 ```json
 {"type": "session_ended", "session_id": "uuid"}
+```
+
+### project_info
+
+Project metadata for a session. Sent automatically on attach, or in response to `get_project_info`.
+
+```json
+{
+  "type": "project_info",
+  "info": {
+    "session_id": "uuid",
+    "project_name": "my-project",
+    "git_branch": "main",
+    "session_state": "attached",
+    "cwd": "/path/to/project",
+    "claude_code_detected": true
+  }
+}
 ```
 
 ### error

@@ -1,21 +1,36 @@
 import Foundation
 import Combine
 
-enum ConnectionState {
+enum ConnectionState: Equatable {
     case disconnected
     case connecting
     case connected
+    case attaching(sessionId: UUID)
     case attached(sessionId: UUID)
+    case detaching
 }
 
-struct SessionInfo: Codable, Identifiable {
+struct SessionInfo: Identifiable, Equatable {
     let id: UUID
     let shell: String
+    let state: String
+    let cwd: String
+}
+
+struct ProjectInfo: Equatable {
+    let sessionId: UUID
+    let projectName: String
+    let gitBranch: String?
+    let sessionState: String
+    let cwd: String
+    let claudeCodeDetected: Bool
 }
 
 class RelayConnection: ObservableObject {
     @Published var state: ConnectionState = .disconnected
     @Published var lastError: String?
+    @Published var sessions: [SessionInfo] = []
+    @Published var projectInfos: [UUID: ProjectInfo] = [:]
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession = .shared
@@ -39,27 +54,46 @@ class RelayConnection: ObservableObject {
 
         state = .connected
         receiveLoop()
+
+        // Auto-fetch session list on connect
+        listSessions()
     }
 
     func disconnect() {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         state = .disconnected
+        sessions = []
+        projectInfos = [:]
     }
 
-    func createSession(shell: String = "") {
+    func listSessions() {
+        send(["type": "list_sessions"])
+    }
+
+    func createSession(shell: String = "", cwd: String? = nil) {
         let shellValue = shell.isEmpty
             ? ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
             : shell
-        send(["type": "create_session", "shell": shellValue])
+        var msg: [String: Any] = ["type": "create_session", "shell": shellValue]
+        if let cwd = cwd {
+            msg["cwd"] = cwd
+        }
+        send(msg)
     }
 
     func attach(sessionId: UUID) {
+        state = .attaching(sessionId: sessionId)
         send(["type": "attach", "session_id": sessionId.uuidString.lowercased()])
     }
 
     func detach() {
+        state = .detaching
         send(["type": "detach"])
+    }
+
+    func killSession(sessionId: UUID) {
+        send(["type": "kill_session", "session_id": sessionId.uuidString.lowercased()])
     }
 
     func sendInput(_ data: Data) {
@@ -69,6 +103,10 @@ class RelayConnection: ObservableObject {
 
     func resize(cols: Int, rows: Int) {
         send(["type": "resize", "cols": cols, "rows": rows])
+    }
+
+    func getProjectInfo(sessionId: UUID) {
+        send(["type": "get_project_info", "session_id": sessionId.uuidString.lowercased()])
     }
 
     // MARK: - Private
@@ -123,10 +161,26 @@ class RelayConnection: ObservableObject {
 
         DispatchQueue.main.async {
             switch type {
+            case "sessions":
+                if let list = json["sessions"] as? [[String: Any]] {
+                    self.sessions = list.compactMap { dict in
+                        guard let idStr = dict["id"] as? String,
+                              let id = UUID(uuidString: idStr),
+                              let shell = dict["shell"] as? String else {
+                            return nil
+                        }
+                        let state = dict["state"] as? String ?? "unknown"
+                        let cwd = dict["cwd"] as? String ?? ""
+                        return SessionInfo(id: id, shell: shell, state: state, cwd: cwd)
+                    }
+                }
+
             case "session_created":
                 if let session = json["session"] as? [String: Any],
                    let idStr = session["id"] as? String,
                    let id = UUID(uuidString: idStr) {
+                    // Refresh session list, then attach
+                    self.listSessions()
                     self.attach(sessionId: id)
                 }
 
@@ -134,10 +188,13 @@ class RelayConnection: ObservableObject {
                 if let idStr = json["session_id"] as? String,
                    let id = UUID(uuidString: idStr) {
                     self.state = .attached(sessionId: id)
+                    // Refresh session list to get updated states
+                    self.listSessions()
                 }
 
             case "detached":
                 self.state = .connected
+                self.listSessions()
 
             case "data":
                 if let payload = json["payload"] as? String,
@@ -146,7 +203,29 @@ class RelayConnection: ObservableObject {
                 }
 
             case "session_ended":
-                self.state = .connected
+                if let idStr = json["session_id"] as? String,
+                   let id = UUID(uuidString: idStr) {
+                    self.projectInfos.removeValue(forKey: id)
+                    if case .attached(let currentId) = self.state, currentId == id {
+                        self.state = .connected
+                    }
+                    self.listSessions()
+                }
+
+            case "project_info":
+                if let infoDict = json["info"] as? [String: Any],
+                   let idStr = infoDict["session_id"] as? String,
+                   let id = UUID(uuidString: idStr) {
+                    let info = ProjectInfo(
+                        sessionId: id,
+                        projectName: infoDict["project_name"] as? String ?? "Unknown",
+                        gitBranch: infoDict["git_branch"] as? String,
+                        sessionState: infoDict["session_state"] as? String ?? "unknown",
+                        cwd: infoDict["cwd"] as? String ?? "",
+                        claudeCodeDetected: infoDict["claude_code_detected"] as? Bool ?? false
+                    )
+                    self.projectInfos[id] = info
+                }
 
             case "error":
                 self.lastError = json["message"] as? String

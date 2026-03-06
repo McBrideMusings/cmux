@@ -97,6 +97,9 @@
 		RC000002A1B2C3D4E5F60001 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000012A1B2C3D4E5F60001 /* ConnectView.swift */; };
 		RC000003A1B2C3D4E5F60001 /* RelayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000013A1B2C3D4E5F60001 /* RelayConnection.swift */; };
 		RC000004A1B2C3D4E5F60001 /* TerminalSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000014A1B2C3D4E5F60001 /* TerminalSessionView.swift */; };
+		RC000006A1B2C3D4E5F60001 /* ServerBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000015A1B2C3D4E5F60001 /* ServerBrowserView.swift */; };
+		RC000007A1B2C3D4E5F60001 /* SessionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000016A1B2C3D4E5F60001 /* SessionRowView.swift */; };
+		RC000008A1B2C3D4E5F60001 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RC000017A1B2C3D4E5F60001 /* SessionDetailView.swift */; };
 		RC000005A1B2C3D4E5F60001 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = RC000070A1B2C3D4E5F60001 /* SwiftTerm */; };
 /* End PBXBuildFile section */
 
@@ -242,6 +245,9 @@
 		RC000012A1B2C3D4E5F60001 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		RC000013A1B2C3D4E5F60001 /* RelayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConnection.swift; sourceTree = "<group>"; };
 		RC000014A1B2C3D4E5F60001 /* TerminalSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionView.swift; sourceTree = "<group>"; };
+		RC000015A1B2C3D4E5F60001 /* ServerBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBrowserView.swift; sourceTree = "<group>"; };
+		RC000016A1B2C3D4E5F60001 /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
+		RC000017A1B2C3D4E5F60001 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		RC000000A1B2C3D4E5F60001 /* relay-client.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "relay-client.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -489,6 +495,9 @@
 				RC000012A1B2C3D4E5F60001 /* ConnectView.swift */,
 				RC000013A1B2C3D4E5F60001 /* RelayConnection.swift */,
 				RC000014A1B2C3D4E5F60001 /* TerminalSessionView.swift */,
+				RC000015A1B2C3D4E5F60001 /* ServerBrowserView.swift */,
+				RC000016A1B2C3D4E5F60001 /* SessionRowView.swift */,
+				RC000017A1B2C3D4E5F60001 /* SessionDetailView.swift */,
 			);
 			path = RelayClient;
 			sourceTree = "<group>";
@@ -764,6 +773,9 @@
 				RC000002A1B2C3D4E5F60001 /* ConnectView.swift in Sources */,
 				RC000003A1B2C3D4E5F60001 /* RelayConnection.swift in Sources */,
 				RC000004A1B2C3D4E5F60001 /* TerminalSessionView.swift in Sources */,
+				RC000006A1B2C3D4E5F60001 /* ServerBrowserView.swift in Sources */,
+				RC000007A1B2C3D4E5F60001 /* SessionRowView.swift in Sources */,
+				RC000008A1B2C3D4E5F60001 /* SessionDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

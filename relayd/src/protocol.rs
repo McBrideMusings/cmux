@@ -10,6 +10,7 @@ pub enum ClientMessage {
     CreateSession {
         #[serde(default = "default_shell")]
         shell: String,
+        cwd: Option<String>,
     },
     Attach {
         session_id: Uuid,
@@ -25,6 +26,9 @@ pub enum ClientMessage {
     Data {
         payload: String, // base64-encoded
     },
+    GetProjectInfo {
+        session_id: Uuid,
+    },
 }
 
 fn default_shell() -> String {
@@ -33,7 +37,7 @@ fn default_shell() -> String {
 
 // -- Server → Client --
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
     Sessions {
@@ -55,10 +59,25 @@ pub enum ServerMessage {
     Error {
         message: String,
     },
+    ProjectInfo {
+        info: ProjectInfo,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionInfo {
     pub id: Uuid,
     pub shell: String,
+    pub state: String,
+    pub cwd: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectInfo {
+    pub session_id: Uuid,
+    pub project_name: String,
+    pub git_branch: Option<String>,
+    pub session_state: String,
+    pub cwd: String,
+    pub claude_code_detected: bool,
 }

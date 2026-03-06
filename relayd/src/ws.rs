@@ -1,6 +1,7 @@
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
-use std::io::{Read, Write};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -8,10 +9,16 @@ use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::claude_detect::ClaudeDetector;
+use crate::project;
 use crate::protocol::{ClientMessage, ServerMessage};
 use crate::session::SessionRegistry;
 
-pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
+pub async fn handle_connection(
+    stream: TcpStream,
+    registry: SessionRegistry,
+    claude_detector: ClaudeDetector,
+) {
     let ws_stream = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {
@@ -24,11 +31,9 @@ pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
     let mut attached_session: Option<Uuid> = None;
-    let mut pty_read_task: Option<tokio::task::JoinHandle<()>> = None;
-    let pty_writer: Arc<Mutex<Option<Box<dyn Write + Send>>>> = Arc::new(Mutex::new(None));
-
-    // Channel for PTY output → WebSocket sender
-    let (pty_tx, mut pty_rx) = mpsc::channel::<ServerMessage>(256);
+    let mut broadcast_forward_task: Option<tokio::task::JoinHandle<()>> = None;
+    type WriterHandle = Arc<Mutex<Box<dyn Write + Send>>>;
+    let pty_writer: Arc<Mutex<Option<WriterHandle>>> = Arc::new(Mutex::new(None));
 
     // Outgoing message channel
     let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<ServerMessage>(256);
@@ -43,16 +48,6 @@ pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
                 }
             };
             if ws_sender.send(Message::Text(json)).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    // Forward PTY output to the outgoing channel
-    let outgoing_tx2 = outgoing_tx.clone();
-    let pty_forward_task = tokio::spawn(async move {
-        while let Some(msg) = pty_rx.recv().await {
-            if outgoing_tx2.send(msg).await.is_err() {
                 break;
             }
         }
@@ -85,34 +80,38 @@ pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
                     .await;
             }
 
-            ClientMessage::CreateSession { shell } => match registry.spawn(&shell, 80, 24) {
-                Ok(info) => {
-                    let _ = outgoing_tx
-                        .send(ServerMessage::SessionCreated { session: info })
-                        .await;
+            ClientMessage::CreateSession { shell, cwd } => {
+                let cwd_path = cwd.map(PathBuf::from);
+                match registry.spawn(&shell, 80, 24, cwd_path) {
+                    Ok(info) => {
+                        let _ = outgoing_tx
+                            .send(ServerMessage::SessionCreated { session: info })
+                            .await;
+                    }
+                    Err(e) => {
+                        let _ = outgoing_tx
+                            .send(ServerMessage::Error {
+                                message: format!("Failed to create session: {}", e),
+                            })
+                            .await;
+                    }
                 }
-                Err(e) => {
-                    let _ = outgoing_tx
-                        .send(ServerMessage::Error {
-                            message: format!("Failed to create session: {}", e),
-                        })
-                        .await;
-                }
-            },
+            }
 
             ClientMessage::Attach { session_id } => {
                 // Detach from current session if any
-                if attached_session.take().is_some() {
-                    if let Some(task) = pty_read_task.take() {
+                if let Some(prev_id) = attached_session.take() {
+                    if let Some(task) = broadcast_forward_task.take() {
                         task.abort();
                     }
                     *pty_writer.lock().unwrap() = None;
+                    registry.detach(prev_id);
                     let _ = outgoing_tx.send(ServerMessage::Detached).await;
                 }
 
-                // Take the session out to get reader/writer
-                let session = match registry.take(session_id) {
-                    Some(s) => s,
+                // Attach to the requested session
+                let handle = match registry.attach(session_id) {
+                    Some(h) => h,
                     None => {
                         let _ = outgoing_tx
                             .send(ServerMessage::Error {
@@ -123,71 +122,65 @@ pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
                     }
                 };
 
-                let reader = match session.master.try_clone_reader() {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let _ = outgoing_tx
-                            .send(ServerMessage::Error {
-                                message: format!("Failed to get PTY reader: {}", e),
-                            })
-                            .await;
-                        registry.put_back(session);
-                        continue;
-                    }
-                };
-
-                let writer = match session.master.take_writer() {
-                    Ok(w) => w,
-                    Err(e) => {
-                        let _ = outgoing_tx
-                            .send(ServerMessage::Error {
-                                message: format!("Failed to get PTY writer: {}", e),
-                            })
-                            .await;
-                        registry.put_back(session);
-                        continue;
-                    }
-                };
-
-                // Put session back for resize/kill
-                registry.put_back(session);
-
-                *pty_writer.lock().unwrap() = Some(writer);
+                *pty_writer.lock().unwrap() = Some(handle.writer);
                 attached_session = Some(session_id);
+
                 let _ = outgoing_tx
                     .send(ServerMessage::Attached { session_id })
                     .await;
 
-                // Spawn task to read PTY output
-                let pty_tx_clone = pty_tx.clone();
-                let mut reader = reader;
-                pty_read_task = Some(tokio::task::spawn_blocking(move || {
-                    let mut buf = [0u8; 4096];
+                // Send scrollback snapshot as initial data
+                if !handle.scrollback_snapshot.is_empty() {
+                    let payload = base64::engine::general_purpose::STANDARD
+                        .encode(&handle.scrollback_snapshot);
+                    let _ = outgoing_tx
+                        .send(ServerMessage::Data { payload })
+                        .await;
+                }
+
+                // Send project info automatically on attach
+                if registry.get_cwd(session_id).is_some() {
+                    let info =
+                        project::build_project_info(session_id, &registry, &claude_detector);
+                    let _ = outgoing_tx
+                        .send(ServerMessage::ProjectInfo { info })
+                        .await;
+                }
+
+                // Spawn task to forward broadcast → outgoing
+                let mut receiver = handle.receiver;
+                let outgoing_tx_clone = outgoing_tx.clone();
+                broadcast_forward_task = Some(tokio::spawn(async move {
                     loop {
-                        match reader.read(&mut buf) {
-                            Ok(0) => break,
-                            Ok(n) => {
+                        match receiver.recv().await {
+                            Ok(data) => {
                                 let payload =
-                                    base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
-                                if pty_tx_clone
-                                    .blocking_send(ServerMessage::Data { payload })
+                                    base64::engine::general_purpose::STANDARD.encode(&data);
+                                if outgoing_tx_clone
+                                    .send(ServerMessage::Data { payload })
+                                    .await
                                     .is_err()
                                 {
                                     break;
                                 }
                             }
-                            Err(_) => break,
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                // Missed some messages, continue
+                                info!("Broadcast receiver lagged by {} messages", n);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         }
                     }
                 }));
             }
 
             ClientMessage::Detach => {
-                if attached_session.take().is_some() {
-                    if let Some(task) = pty_read_task.take() {
+                if let Some(session_id) = attached_session.take() {
+                    if let Some(task) = broadcast_forward_task.take() {
                         task.abort();
                     }
                     *pty_writer.lock().unwrap() = None;
+                    registry.detach(session_id);
                     let _ = outgoing_tx.send(ServerMessage::Detached).await;
                 }
             }
@@ -195,7 +188,7 @@ pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
             ClientMessage::KillSession { session_id } => {
                 if attached_session == Some(session_id) {
                     attached_session = None;
-                    if let Some(task) = pty_read_task.take() {
+                    if let Some(task) = broadcast_forward_task.take() {
                         task.abort();
                     }
                     *pty_writer.lock().unwrap() = None;
@@ -225,23 +218,33 @@ pub async fn handle_connection(stream: TcpStream, registry: SessionRegistry) {
                     if let Ok(bytes) =
                         base64::engine::general_purpose::STANDARD.decode(&payload)
                     {
-                        if let Some(ref mut writer) = *pty_writer.lock().unwrap() {
-                            let _ = writer.write_all(&bytes);
+                        let writer_guard = pty_writer.lock().unwrap();
+                        if let Some(ref writer) = *writer_guard {
+                            let _ = writer.lock().unwrap().write_all(&bytes);
                         }
                     }
                 }
             }
+
+            ClientMessage::GetProjectInfo { session_id } => {
+                let info =
+                    project::build_project_info(session_id, &registry, &claude_detector);
+                let _ = outgoing_tx
+                    .send(ServerMessage::ProjectInfo { info })
+                    .await;
+            }
         }
     }
 
-    // Cleanup
-    if let Some(task) = pty_read_task.take() {
-        task.abort();
+    // Cleanup: detach if still attached
+    if let Some(session_id) = attached_session.take() {
+        if let Some(task) = broadcast_forward_task.take() {
+            task.abort();
+        }
+        registry.detach(session_id);
     }
     drop(outgoing_tx);
-    drop(pty_tx);
     let _ = send_task.await;
-    let _ = pty_forward_task.await;
 
     info!("WebSocket connection closed");
 }

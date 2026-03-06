@@ -4,7 +4,7 @@ import SwiftUI
 struct RelayClientApp: App {
     var body: some Scene {
         WindowGroup {
-            ConnectView()
+            ServerBrowserView()
         }
     }
 }

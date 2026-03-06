@@ -7,11 +7,9 @@ struct ConnectView: View {
 
     var body: some View {
         switch connection.state {
-        case .disconnected, .connecting:
+        case .disconnected, .connecting, .connected, .detaching:
             connectForm
-        case .connected:
-            connectForm
-        case .attached:
+        case .attaching, .attached:
             TerminalSessionView(connection: connection)
         }
     }

@@ -1,6 +1,10 @@
+mod claude_detect;
+mod project;
 mod protocol;
 mod session;
 mod ws;
+
+use std::time::Duration;
 
 use clap::Parser;
 use tokio::net::TcpListener;
@@ -31,13 +35,31 @@ async fn main() {
 
     let registry = session::SessionRegistry::new();
 
+    // Start Claude process detector
+    let claude_detector = claude_detect::ClaudeDetector::new();
+    claude_detector.start_polling(Duration::from_secs(10));
+
+    // Start dead session cleanup task
+    let cleanup_registry = registry.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            let dead = cleanup_registry.cleanup_dead();
+            for id in dead {
+                info!("Session {} process exited, removed", id);
+            }
+        }
+    });
+
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
                 info!("Connection from {}", peer);
                 let registry = registry.clone();
+                let detector = claude_detector.clone();
                 tokio::spawn(async move {
-                    ws::handle_connection(stream, registry).await;
+                    ws::handle_connection(stream, registry, detector).await;
                 });
             }
             Err(e) => {
