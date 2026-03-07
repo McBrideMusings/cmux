@@ -3,6 +3,7 @@
 
 import glob
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -41,6 +42,129 @@ def err(msg):
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
 LOG_FILE = os.path.join(LOG_DIR, "run.log")
+
+RELAY_SUBSYSTEM = "com.cmuxterm.relay-client"
+RELAY_PROCESS = "relay-client"
+
+
+# --- Log predicates ---
+
+def log_predicate(level="app"):
+    """Return a macOS `log stream` predicate string for the given level."""
+    if level == "app":
+        return f"subsystem == '{RELAY_SUBSYSTEM}'"
+    elif level == "debug":
+        return (
+            f"(subsystem == '{RELAY_SUBSYSTEM}' OR process == '{RELAY_PROCESS}') "
+            f"AND NOT (subsystem BEGINSWITH 'com.apple.launchservices') "
+            f"AND NOT (subsystem BEGINSWITH 'com.apple.runningboard')"
+        )
+    elif level == "system":
+        return f"process == '{RELAY_PROCESS}' AND subsystem != '{RELAY_SUBSYSTEM}'"
+    elif level == "verbose":
+        return f"process == '{RELAY_PROCESS}'"
+    else:
+        err(f"Unknown log level: {level}")
+        err("Valid levels: app (default), debug, system, verbose")
+        sys.exit(1)
+
+
+# --- Log formatter ---
+
+# Rust tracing default format:
+#   2024-01-15T18:25:49.971234Z  INFO relayd::ws: message here
+_RE_SERVER = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2}\.\d{3})\d*Z\s+"
+    r"(\w+)\s+"
+    r"([\w:]+):\s+"
+    r"(.*)$"
+)
+
+# macOS log stream compact format:
+#   2024-01-15 18:25:49.971234-0800 ... relay-client ... [subsystem:category] message
+#   Filter header line and parse useful fields
+_RE_CLIENT = re.compile(
+    r"^\d{4}-\d{2}-\d{2}\s+(\d{2}:\d{2}:\d{2}\.\d{3})\d*[+-]\d{4}\s+"
+    r"\S+\s+"          # thread ID or machine name
+    r"\S+\s+"          # process name
+    r"\[(\d+)]\s+"     # PID
+    r"<(\w+)>\s+"      # level
+    r"\(([^)]*)\)\s+"  # subsystem or library
+    r"(.*)$"
+)
+
+# Level colors
+_LEVEL_COLORS = {
+    "error": C.RED,
+    "warn": C.YELLOW,
+    "info": C.GREEN,
+    "debug": C.DIM,
+    "trace": C.DIM,
+    "default": C.DIM,
+    "notice": C.GREEN,
+    "fault": C.RED,
+}
+
+
+class LogFormatter:
+    """Parses and formats server/client log lines into aligned, colored rows."""
+
+    def __init__(self, filter_pattern=None):
+        self._filter_re = re.compile(filter_pattern, re.IGNORECASE) if filter_pattern else None
+
+    def format_line(self, source, raw_line):
+        """Format a raw log line. Returns (terminal_str, raw_str) or (None, None) if filtered."""
+        line = raw_line.rstrip("\n")
+        if not line:
+            return None, None
+
+        if source == "server":
+            result = self._parse_server(line)
+        else:
+            result = self._parse_client(line)
+
+        if result is None:
+            # Fallthrough: unparseable lines pass through dimmed
+            if self._filter_re and not self._filter_re.search(line):
+                return None, None
+            src_color = C.BLUE if source == "server" else C.MAGENTA
+            terminal = f"{C.DIM}{src_color}{source:<8}{C.RESET}  {C.DIM}{line}{C.RESET}\n"
+            raw = f"{source:<8}  {line}\n"
+            return terminal, raw
+
+        time_str, level, module, message = result
+
+        if self._filter_re and not self._filter_re.search(message):
+            return None, None
+
+        level_lower = level.lower()
+        level_color = _LEVEL_COLORS.get(level_lower, C.DIM)
+        src_color = C.BLUE if source == "server" else C.MAGENTA
+        level_display = level_lower.capitalize()
+
+        terminal = (
+            f"{C.DIM}{time_str}{C.RESET}  "
+            f"{src_color}{source:<8}{C.RESET}"
+            f"{level_color}{level_display:<8}{C.RESET}"
+            f"{C.DIM}{C.CYAN}{module:<34}{C.RESET}  "
+            f"{message}\n"
+        )
+        raw = f"{time_str}  {source:<8}{level_display:<8}{module:<34}  {message}\n"
+        return terminal, raw
+
+    def _parse_server(self, line):
+        m = _RE_SERVER.match(line)
+        if not m:
+            return None
+        time_str, level, module, message = m.groups()
+        return time_str, level, module, message
+
+    def _parse_client(self, line):
+        m = _RE_CLIENT.match(line)
+        if not m:
+            return None
+        time_str, _pid, level, subsystem, message = m.groups()
+        return time_str, level, subsystem, message
 
 _children = []
 
@@ -212,11 +336,13 @@ def cmd_clean(args):
     ok("Clean complete")
 
 
-@command("relay", "Build and run relayd + relay-client together (--port PORT)")
+@command("relay", "Build and run relayd + relay-client (--port PORT --log LEVEL --filter REGEX)")
 def cmd_relay(args):
     import threading
 
     port = "7800"
+    log_level = "app"
+    filter_pattern = None
     i = 0
     while i < len(args):
         if args[i] == "--port":
@@ -225,10 +351,26 @@ def cmd_relay(args):
                 err("--port requires a value")
                 sys.exit(1)
             port = args[i]
+        elif args[i] == "--log":
+            i += 1
+            if i >= len(args):
+                err("--log requires a value (app, debug, system, verbose)")
+                sys.exit(1)
+            log_level = args[i]
+        elif args[i] == "--filter":
+            i += 1
+            if i >= len(args):
+                err("--filter requires a regex pattern")
+                sys.exit(1)
+            filter_pattern = args[i]
         else:
             err(f"Unknown arg: {args[i]}")
             sys.exit(1)
         i += 1
+
+    # Validate log level early
+    predicate = log_predicate(log_level)
+    formatter = LogFormatter(filter_pattern=filter_pattern)
 
     # Build relayd
     info("Building relayd...")
@@ -276,18 +418,17 @@ def cmd_relay(args):
     os.makedirs(LOG_DIR, exist_ok=True)
     log_fh = open(LOG_FILE, "a")
 
-    SERVER_TAG = f"{C.BLUE}{C.BOLD}[server]{C.RESET} "
-    CLIENT_TAG = f"{C.MAGENTA}{C.BOLD}[client]{C.RESET} "
-
-    def prefixed_stream(proc, tag):
-        """Read lines from proc.stdout and print/log with a prefix tag."""
+    def formatted_stream(proc, source):
+        """Read lines from proc.stdout, format, and print/log."""
         try:
             for line in proc.stdout:
-                tagged = f"{tag}{line}"
-                sys.stdout.write(tagged)
-                sys.stdout.flush()
-                log_fh.write(tagged)
-                log_fh.flush()
+                terminal, raw = formatter.format_line(source, line)
+                if terminal:
+                    sys.stdout.write(terminal)
+                    sys.stdout.flush()
+                if raw:
+                    log_fh.write(raw)
+                    log_fh.flush()
         except (IOError, ValueError):
             pass
 
@@ -299,24 +440,26 @@ def cmd_relay(args):
         bufsize=1, universal_newlines=True,
     )
     _children.append(server_proc)
-    threading.Thread(target=prefixed_stream, args=(server_proc, SERVER_TAG), daemon=True).start()
+    threading.Thread(target=formatted_stream, args=(server_proc, "server"), daemon=True).start()
 
     # Start relay-client app and stream its os_log output
     info("Launching relay-client...")
     subprocess.Popen(["open", app_path])
 
+    # Use --level debug for debug/verbose tiers, info for app/system
+    stream_level = "debug" if log_level in ("debug", "verbose") else "info"
+
     client_proc = subprocess.Popen(
-        ["log", "stream", "--predicate",
-         'subsystem == "com.cmuxterm.relay-client" OR '
-         '(process == "relay-client" AND category != "default")',
-         "--style", "compact", "--level", "debug"],
+        ["log", "stream", "--predicate", predicate,
+         "--style", "compact", "--color", "always",
+         "--level", stream_level],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         bufsize=1, universal_newlines=True,
     )
     _children.append(client_proc)
-    threading.Thread(target=prefixed_stream, args=(client_proc, CLIENT_TAG), daemon=True).start()
+    threading.Thread(target=formatted_stream, args=(client_proc, "client"), daemon=True).start()
 
-    ok("Both running. Ctrl+C to stop.")
+    ok(f"Both running (log={log_level}). Ctrl+C to stop.")
     print()
 
     try:
